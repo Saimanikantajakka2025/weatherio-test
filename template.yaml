@@ -2,18 +2,18 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: Weatherio — HTTP API ($default stage) on Node.js 20
 
+# --- CI/CD-injected Parameters ---
 Parameters:
   MongoUri:
     Type: String
     NoEcho: true
-    Description: "MongoDB connection string injected by CI"
+    Description: "MongoDB connection string injected by CI/CD (e.g., GitHub Secret)"
 
 Globals:
   Function:
     Timeout: 20
     MemorySize: 512
     Runtime: nodejs20.x
-  # NOTE: Remove Globals.Api (that was only for REST APIs)
 
 Resources:
   # --- HTTP API with no visible stage in the URL ---
@@ -26,29 +26,31 @@ Resources:
         AllowMethods: [GET, POST, PUT, DELETE, OPTIONS]
         AllowHeaders: ['*']
 
-  # --- Lambda function (wired to HTTP API and uses injected Mongo URI) ---
+  # --- Lambda function connected to the HTTP API ---
   WeatherApi:
     Type: AWS::Serverless::Function
     Properties:
       Handler: lambda.handler
       CodeUri: .
       Runtime: nodejs20.x
+      MemorySize: 512
+      Timeout: 20
       Environment:
         Variables:
           MONGO_URI: !Ref MongoUri
       Events:
-        Root:
+        ApiRoot:
           Type: HttpApi
           Properties:
             ApiId: !Ref WeatherioHttpApi
-            Path: /
+            Path: "/"
             Method: ANY
             PayloadFormatVersion: '2.0'
-        Proxy:
+        ApiProxy:
           Type: HttpApi
           Properties:
             ApiId: !Ref WeatherioHttpApi
-            Path: /{proxy+}
+            Path: "/{proxy+}"
             Method: ANY
             PayloadFormatVersion: '2.0'
 

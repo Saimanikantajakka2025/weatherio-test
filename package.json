@@ -1,9 +1,11 @@
 {
   "name": "weatherio-sam",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "lambda.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start:plain": "node -e \"require('dotenv').config(); require('./app'); console.log('Plain Node started (not Lambda).');\"",
+    "sam:build": "sam build",
+    "sam:api": "sam local start-api --env-vars ./env.json"
   },
   "keywords": [],
   "author": "",
@@ -11,11 +13,11 @@
   "description": "",
   "dependencies": {
     "@codegenie/serverless-express": "^4.17.0",
-    "bcryptjs": "^3.0.2",
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
-    "mongoose": "^8.19.2",
+    "mongoose": "^8.19.3",
     "path": "^0.12.7"
   }
 }

@@ -1,13 +1,12 @@
 console.log('✅ Express app loaded');
 
-
 const express = require('express');
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs'); // pure JS
+const bcrypt = require('bcryptjs');
 const cors = require('cors');
 const path = require('path');
 
-// For local dev only (.env)
+// .env only for plain-node local; SAM uses env.json
 try { require('dotenv').config(); } catch (_) {}
 
 const app = express();
@@ -15,16 +14,29 @@ app.use(express.json());
 app.use(cors());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ---- Mongo connection (re-usable) ----
+// ---- Mongo connection (fail fast; never hang) ----
 const MONGO_URI = process.env.MONGO_URI;
 if (!MONGO_URI) console.warn('⚠️  MONGO_URI is not set');
 
+let connectingPromise = null;
+
 async function ensureDb() {
-  if (mongoose.connection.readyState !== 1) {
-    await mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 3000 });
-    console.log('✅ Mongo connected');
+  if (!MONGO_URI) throw new Error('MONGO_URI not set');
+  if (mongoose.connection.readyState === 1) return true; // already connected
+  if (!connectingPromise) {
+    connectingPromise = mongoose.connect(MONGO_URI, {
+      serverSelectionTimeoutMS: 3000,
+      connectTimeoutMS: 3000
+    }).then(() => {
+      console.log('✅ Mongo connected');
+      return true;
+    }).catch((err) => {
+      console.error('❌ Mongo connect failed:', err?.message || err);
+      connectingPromise = null; // allow retry on next request
+      throw err;
+    });
   }
-return true; 
+  return connectingPromise;
 }
 
 // ---- Schemas & Models ----
@@ -47,12 +59,11 @@ const overrideSchema = new mongoose.Schema({
 });
 const Override = mongoose.model('Override', overrideSchema);
 
-// ---- Helper DB fns ----
+// ---- Helpers ----
 async function getLatestOverride(lat, lon, date, userEmail) {
   await ensureDb();
   return Override.findOne({ lat, lon, date, active: true, updatedBy: userEmail })
-    .sort({ version: -1 })
-    .exec();
+    .sort({ version: -1 }).exec();
 }
 async function addOverride(lat, lon, date, values, userEmail) {
   await ensureDb();
@@ -85,7 +96,7 @@ app.get('/health', async (req, res) => {
 
 app.post('/register', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body || {};
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
     await ensureDb();
     const existing = await User.findOne({ email });
@@ -101,11 +112,12 @@ app.post('/register', async (req, res) => {
 
 app.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body || {};
     await ensureDb();
     const user = await User.findOne({ email });
-    if (!user || !(await bcrypt.compare(password, user.password)))
+    if (!user || !(await bcrypt.compare(password, user.password))) {
       return res.status(401).json({ error: 'Invalid email or password' });
+    }
     res.json({ message: 'Login successful', user: { email: user.email } });
   } catch (err) {
     console.error('Login error:', err);
@@ -115,7 +127,7 @@ app.post('/login', async (req, res) => {
 
 app.get('/override', async (req, res) => {
   try {
-    const { lat, lon, date, email } = req.query;
+    const { lat, lon, date, email } = req.query || {};
     const override = await getLatestOverride(lat, lon, date, email);
     res.json(override || {});
   } catch (err) {
@@ -126,7 +138,7 @@ app.get('/override', async (req, res) => {
 
 app.post('/override', async (req, res) => {
   try {
-    const { lat, lon, date, values, email } = req.body;
+    const { lat, lon, date, values, email } = req.body || {};
     const newEntry = await addOverride(lat, lon, date, values, email);
     res.status(201).json(newEntry);
   } catch (err) {
@@ -137,7 +149,7 @@ app.post('/override', async (req, res) => {
 
 app.delete('/override', async (req, res) => {
   try {
-    const { lat, lon, date, email } = req.body;
+    const { lat, lon, date, email } = req.body || {};
     const removed = await removeOverride(lat, lon, date, email);
     res.json({ removed: !!removed });
   } catch (err) {
@@ -146,7 +158,7 @@ app.delete('/override', async (req, res) => {
   }
 });
 
-// Static HTML (optional)
+// Optional static pages
 app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
 app.get('/register', (req, res) => res.sendFile(path.join(__dirname, 'public', 'register.html')));
 app.get('/weather', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
@@ -158,5 +170,5 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'internal-error' });
 });
 
-// IMPORTANT: DO NOT call app.listen here in Lambda mode
+// IMPORTANT: Do not call app.listen() in Lambda
 module.exports = app;
