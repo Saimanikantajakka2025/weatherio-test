@@ -1,5 +1,8 @@
 version = 0.1
 
+[default.global.parameters]
+region = "ap-south-1"
+
 [default.deploy.parameters]
 stack_name = "weatherio"
 region = "ap-south-1"
@@ -8,6 +11,5 @@ capabilities = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
 confirm_changeset = false
 fail_on_empty_changeset = false
 resolve_s3 = false
+parameter_overrides = "MongoUri='mongodb+srv://corpgroupbeintern_db_user:wIUfjZFqCPO0JvIh@cluster0.ve8fl4r.mongodb.net/weatherio?retryWrites=true&w=majority&appName=Cluster0'"
 
-[default.global.parameters]
-region = "ap-south-1"
